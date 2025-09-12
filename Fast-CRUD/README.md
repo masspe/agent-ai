@@ -1,333 +1,304 @@
-Agent Builder — Backend Auto-CRUD
+# Agent Builder — Backend Auto-CRUD
 
-Backend FastAPI con:
+A powerful FastAPI backend with automatic CRUD generation for database tables.
 
-SQLAlchemy Automap → CRUD automatico per tutte le tabelle del DB (con PK singole o composite).
+## ✨ Features
 
-Autenticazione JWT (Argon2 per le password).
+- **SQLAlchemy Automap**: Automatic CRUD operations for all database tables (single or composite primary keys)
+- **JWT Authentication**: Secure authentication with Argon2 password hashing
+- **Custom User Router**: Specialized user management with password hashing (doesn't expose password_hash)
+- **CORS Support**: Pre-configured for frontend integration
+- **Swagger Documentation**: Interactive API documentation
+- **Multi-Database**: Works with MariaDB/MySQL using `mariadb+mariadbconnector://...` or `mysql+pymysql://...`
 
-Router custom per users (hashing, non espone password_hash).
+## 📋 Requirements
 
-CORS verso il frontend.
+- **Python 3.12+**
+- **MariaDB/MySQL** database server running and accessible
+- **Virtual Environment** (recommended)
 
-Documentazione Swagger.
+## 📁 Project Structure
 
-Funziona con MariaDB/MySQL: usa mariadb+mariadbconnector://... o mysql+pymysql://....
-
-Requisiti
-
-Python 3.12
-
-MariaDB / MySQL in esecuzione e raggiungibile
-
-(Consigliato) venv dedicato
-
-Struttura cartelle (generata)
+```
 app/
-  auto_router.py          # Builder generico di router CRUD (GET/POST/PUT/DELETE)
-  db.py                   # Engine, Session, dependency get_db
-  dependencies.py         # get_current_user, require_admin (JWT)
-  main.py                 # FastAPI app + registrazione router auto
-  models/
-    base.py               # BaseApp dichiarativo (per tabella users)
-    user.py               # Modello users (auth)
-  routers/
-    auth.py               # /auth/token (login), /auth/seed_admin
-    health.py             # /health/ping
-    me.py                 # /me (profilo corrente)
-    users.py              # CRUD utenti (con hashing)
-  security/
-    auth.py               # hash/verifica Argon2, create_access_token
-  utils.py                # row_to_dict (serializzazione ORM → dict)
-.env.example
-requirements.txt
-README.md
+├── auto_router.py          # Generic CRUD router builder (GET/POST/PUT/DELETE)
+├── db.py                   # Database engine, session, get_db dependency
+├── dependencies.py         # get_current_user, require_admin (JWT)
+├── main.py                 # FastAPI app + auto router registration
+├── models/
+│   ├── base.py            # BaseApp declarative (for users table)
+│   └── user.py            # User model (authentication)
+├── routers/
+│   ├── auth.py            # /auth/token (login), /auth/seed_admin
+│   ├── health.py          # /health/ping
+│   ├── me.py              # /me (current user profile)
+│   └── users.py           # User CRUD (with password hashing)
+├── security/
+│   └── auth.py            # Argon2 hash/verify, create_access_token
+└── utils.py               # row_to_dict (ORM → dict serialization)
+```
 
-Setup rapido
-1) Creazione venv e dipendenze
+## 🚀 Quick Setup
 
-Windows (PowerShell)
+### 1. Environment Setup
 
+**Windows (PowerShell)**
+```powershell
 python -m venv .venv
-. .venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 Copy-Item .env.example .env
+```
 
-
-macOS/Linux
-
+**macOS/Linux**
+```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
+```
 
-2) Configura .env
+### 2. Configuration
 
-Scegli un driver e aggiorna DATABASE_URL, esempio PyMySQL:
+Edit `.env` file with your database settings:
 
+```env
 DATABASE_URL=mysql+pymysql://user:pass@localhost:3306/agent_app
 FRONTEND_ORIGIN=http://localhost:3000
-SECRET_KEY=metti_uno_stringone_lungo_e_casuale
+SECRET_KEY=your-long-random-secret-key-here
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=120
+```
 
+> **Note**: If you encounter MariaDB plugin errors like `auth_gssapi_client`, switch to PyMySQL (`mysql+pymysql://...`).
 
-Se vedi errori di plugin MariaDB tipo auth_gssapi_client, passa a PyMySQL (mysql+pymysql://...).
+### 3. Start the Server
 
-3) Avvio server
+```bash
 python -m uvicorn app.main:app --reload
 # Default: http://localhost:8000
+```
 
-Documentazione & scoperta API
+## 📖 API Documentation & Discovery
 
-Swagger UI: http://localhost:8000/docs
+- **Swagger UI**: http://localhost:8000/docs
+- **OpenAPI JSON**: http://localhost:8000/openapi.json
+- **List Routes**: http://localhost:8000/__routes (meta endpoint)
+- **List Tables**: http://localhost:8000/__tables (meta endpoint)
 
-OpenAPI JSON: http://localhost:8000/openapi.json
+## 🔐 Authentication
 
-Lista rotte (meta): aggiungi in main.py (opzionale):
+### Initial Setup
 
-from fastapi.routing import APIRoute
-@app.get("/__routes", tags=["meta"])
-def list_routes():
-    return [{"path": r.path, "methods": sorted([m for m in r.methods if m not in {"HEAD","OPTIONS"}])}
-            for r in app.routes if isinstance(r, APIRoute)]
+1. **Seed Admin User**:
+   ```bash
+   curl -X POST http://localhost:8000/auth/seed_admin
+   ```
+   Creates: `admin@example.com` / `admin123` (Argon2 hashed)
 
-Autenticazione
+2. **Login**:
+   ```bash
+   curl -X POST http://localhost:8000/auth/token \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "username=admin@example.com&password=admin123&grant_type=password"
+   ```
+   Returns: `{ "access_token": "...", "token_type": "bearer" }`
 
-Login: POST /auth/token (form-url-encoded con username=email, password, grant_type=password)
+3. **Use Token**: Include in headers for protected routes:
+   ```
+   Authorization: Bearer <TOKEN>
+   ```
 
-Seed admin: POST /auth/seed_admin
-Crea admin@example.com / admin123 (hash Argon2).
+## 🔄 Auto-Generated CRUD Routes
 
-Esempio (curl)
+The backend automatically reflects all database tables (except excluded ones) and creates routers with:
 
-curl -X POST http://localhost:8000/auth/seed_admin
+- `GET /<table>?limit=&offset=` - List records with pagination
+- `GET /<table>/{pk}` - Get single record
+- `POST /<table>` - Create new record (JSON body)
+- `PUT /<table>/{pk}` - Update record
+- `DELETE /<table>/{pk}` - Delete record
 
-curl -X POST http://localhost:8000/auth/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=admin@example.com&password=admin123&grant_type=password"
-# → { "access_token": "...", "token_type": "bearer" }
+### Composite Primary Keys
 
+For tables with composite PKs (e.g., `listing_id` + `user_id`), the path becomes:
+`/<table>/{listing_id}/{user_id}` (parameter order matches PK field order in DB)
 
-Usa il token su rotte protette:
+### Examples
 
-Authorization: Bearer <TOKEN>
-
-Rotte auto-generate (Auto-CRUD)
-
-Il backend riflette tutte le tabelle presenti nel database (tranne quelle escluse) e crea per ognuna un router con:
-
-GET /<table>?limit=&offset=
-
-GET /<table>/{pk}
-
-POST /<table> (body JSON con i campi della tabella)
-
-PUT /<table>/{pk}
-
-DELETE /<table>/{pk}
-
-Composite PK: se la tabella ha una PK composta (es. listing_id + user_id), il path diventa:
-/<table>/{listing_id}/{user_id} (ordine dei parametri = ordine dei campi PK dal DB).
-
-Esempi
-# Lista agenti (autenticazione richiesta)
+```bash
+# List agents (authentication required)
 curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/agents
 
-# Recupera 1 agente
+# Get single agent
 curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/agents/123
 
-# Crea un agente
+# Create agent
 curl -X POST http://localhost:8000/agents \
   -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
-  -d '{"name":"Ricercatore","slug":"ricercatore","model":"gpt-4o","visibility":"private"}'
+  -d '{"name":"Researcher","slug":"researcher","model":"gpt-4o","visibility":"private"}'
 
-# Aggiorna
+# Update agent
 curl -X PUT http://localhost:8000/agents/123 \
   -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
-  -d '{"description":"Nuova descrizione"}'
+  -d '{"description":"New description"}'
 
-# Elimina
+# Delete agent
 curl -X DELETE http://localhost:8000/agents/123 \
   -H "Authorization: Bearer <TOKEN>"
+```
 
+## 👥 User Management (Custom Router)
 
-Nota: le rotte auto non hanno (di default) filtri complessi: c’è paginazione limit/offset.
-Possiamo estendere con query param where/ordinamenti se ti serve.
+Route: `/users` (protected, admin-only by default)
 
-Tabella users (router custom)
+Create/Update operations automatically hash passwords with Argon2 and don't expose `password_hash` in responses.
 
-Rotta: /users (protetta, admin-only di default).
-
-Create/Update fa hashing Argon2 (non espone password_hash nelle risposte).
-
-Esempio creazione:
-
+**Create User Example**:
+```bash
 curl -X POST http://localhost:8000/users \
   -H "Authorization: Bearer <ADMIN_TOKEN>" -H "Content-Type: application/json" \
-  -d '{"email":"nuovo@demo.it","password":"Segretissima!","role":"user","tenant_id":1}'
+  -d '{"email":"new@demo.com","password":"SecretPassword!","role":"user","tenant_id":1}'
+```
 
-Aggiungere nuove tabelle (o nuovi campi)
-Nuova tabella → nuove rotte automatiche
+## 🗄️ Database Schema Management
 
-Crea la tabella nel DB (via SQL o migrazione). Importante: definisci una PK (anche composta).
-Esempio:
+### Adding New Tables
 
-CREATE TABLE report_logs (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-  tenant_id BIGINT UNSIGNED NOT NULL,
-  message TEXT,
-  level VARCHAR(20),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+1. **Create Table** (via SQL or migration):
+   ```sql
+   CREATE TABLE report_logs (
+     id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+     tenant_id BIGINT UNSIGNED NOT NULL,
+     message TEXT,
+     level VARCHAR(20),
+     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+   );
+   ```
 
+2. **Restart Backend** (or use `--reload` for automatic restart)
 
-Riavvia il backend (uvicorn --reload lo fa automaticamente al cambio file; per nuove tabelle è più sicuro un riavvio).
+3. **Verify**: Check `GET /` - the new table should appear in `auto_tables`
 
-Chiama GET / → la tabella deve comparire in auto_tables.
+4. **Test New Routes**:
+   - `GET /report_logs`
+   - `POST /report_logs`
+   - `GET /report_logs/{id}`
+   - `PUT /report_logs/{id}`
+   - `DELETE /report_logs/{id}`
 
-Testa le nuove rotte:
+> **Important**: Tables without primary keys won't get auto-generated routes.
 
-GET    /report_logs
-POST   /report_logs
-GET    /report_logs/{id}
-PUT    /report_logs/{id}
-DELETE /report_logs/{id}
+### Adding Fields to Existing Tables
 
-
-Se manca la PK, il router non viene creato per quella tabella.
-
-Nuovo campo su tabella esistente
-
-ALTER TABLE per aggiungere il campo (metti default se NOT NULL):
-
+```sql
 ALTER TABLE agents ADD COLUMN category VARCHAR(64) NULL AFTER description;
+```
 
+Restart the backend and the new field will be available in POST/PUT/GET operations.
 
-Riavvia il backend (consigliato).
+> **Note**: Adding NOT NULL fields without defaults may cause 500/422 errors if clients don't provide the field.
 
-Ora puoi inviare/vedere il nuovo campo in POST/PUT/GET.
+## 🔒 Security & Access Control
 
-Attenzione ai vincoli:
+### Table Exclusions
 
-Se aggiungi un campo NOT NULL senza default, i POST potrebbero fallire con 500/422 se il client non passa quel campo.
+In `app/main.py`, tables in the `EXCLUDE` set won't get auto-routes:
 
-Se aggiungi FK, assicurati che i valori esistano, altrimenti riceverai errori dal DB all’inserimento.
-
-Sicurezza e policy per tabella
-
-In app/main.py:
-
-Set di tabelle escluse dall’auto-router:
-
+```python
 EXCLUDE = {"users", "alembic_version"}
+```
 
+### Admin-Only Tables
 
-Aggiungi qui tabelle da nascondere completamente.
+To require admin access for specific tables:
 
-Per richiedere admin su alcune tabelle:
-
+```python
 deps = [Depends(get_current_user)]
-# if table_name in {"api_keys", "audits"}:
-#     deps = [Depends(require_admin)]
+if table_name in {"api_keys", "audits"}:
+    deps = [Depends(require_admin)]
 router = build_router_for_model(Model, table_name=table_name, pk_cols=pk_cols, dependencies=deps)
+```
 
+### Custom Routes
 
-Se vuoi sovrascrivere una tabella con router custom, aggiungila ad EXCLUDE e crea un file in app/routers/ con le rotte ad hoc.
+For tables needing custom logic, add them to `EXCLUDE` and create custom routers in `app/routers/`.
 
-CORS
+## 🌐 CORS Configuration
 
-Configurato in main.py:
+Configured in `main.py`:
 
+```python
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
 app.add_middleware(
-  CORSMiddleware,
-  allow_origins=[FRONTEND_ORIGIN],
-  allow_credentials=True,
-  allow_methods=["*"],
-  allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=[FRONTEND_ORIGIN],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+```
 
+Modify `FRONTEND_ORIGIN` or use `*` (be aware of security implications).
 
-Modifica FRONTEND_ORIGIN (o passa * solo se consapevole dei rischi).
+## 🚀 Production Deployment
 
-Produzione (note rapide)
+1. **Use Production ASGI Server**: 
+   ```bash
+   gunicorn app.main:app -k uvicorn.workers.UvicornWorker
+   ```
 
-Esegui con un ASGI server “serio” (es. uvicorn dietro nginx o gunicorn -k uvicorn.workers.UvicornWorker).
+2. **Environment Variables**: Set in environment, not `.env` files
 
-Imposta variabili .env in ambiente (no file).
+3. **Secure Secret Key**: Use long, random `SECRET_KEY`
 
-Usa un segreto longo e casuale per SECRET_KEY.
+4. **SSL/TLS**: Enable on reverse proxy (nginx, etc.)
 
-Abilita SSL/TLS sul reverse proxy.
+5. **Restrict CORS**: Limit to necessary domains only
 
-Limita CORS ai soli domini necessari.
+6. **Database Backups**: Regular backups and consider Alembic for migrations
 
-Backup e migrazioni DB (Alembic consigliato se inizi a cambiare spesso schema lato codice).
+## 🔧 Troubleshooting
 
-Troubleshooting
+### Common Issues
 
-401 Unauthorized
+**401 Unauthorized**
+- Token missing/expired → Login again with `POST /auth/token`
+- Wrong header format → Use `Authorization: Bearer <TOKEN>`
 
-Token mancante/expired → rifai login POST /auth/token.
+**"Invalid credentials" on login**
+- Using JSON instead of form-data → Use `application/x-www-form-urlencoded`
+- Admin not seeded → Run `POST /auth/seed_admin`
+- Wrong database → Check `DATABASE_URL`
 
-Invio errato dal frontend: ricordati Authorization: Bearer <TOKEN>.
+**Authentication plugin errors (MariaDB)**
+- Switch to PyMySQL: `mysql+pymysql://...` in `DATABASE_URL`
 
-“Invalid credentials” su /auth/token
+**"Unknown column" errors**
+- Schema mismatch → Check column names, NOT NULL constraints, etc.
 
-Stai mandando JSON → deve essere x-www-form-urlencoded (username, password, grant_type=password).
+**Tables without routes**
+- Missing primary key → Add PK to table
+- In exclude list → Check `EXCLUDE` set in `main.py`
 
-Non hai seedato l’admin: fai POST /auth/seed_admin.
+## 📊 Service APIs (Quick Reference)
 
-Stai puntando a un altro DB: controlla DATABASE_URL.
+- `GET /health/ping` → `{ "ok": true }`
+- `POST /auth/seed_admin` → Create admin user
+- `POST /auth/token` → Login (JWT)
+- `GET /me` → Current user info
+- `GET /` → List auto-mapped tables
+- `GET /docs` → Swagger UI
+- `GET /__routes` → List all routes (meta)
+- `GET /__tables` → List database tables (meta)
 
-Argon2
+## 🔮 Possible Extensions
 
-Assicurati argon2-cffi installato (in requirements.txt).
+- **Advanced Filtering**: Add `?where=...`, `?order_by=...` support to `auto_router.py`
+- **Audit Logging**: Automatic logging of create/update/delete operations
+- **Rate Limiting**: API rate limits and API key management
+- **RBAC**: Role-based access control with granular table/operation permissions
 
-Se avevi hash bcrypt vecchi, il login li verifica e (opzionalmente) li ri-hasha ad Argon2.
+---
 
-TypeError: Boolean value of this clause is not defined (SQLAlchemy)
-
-Accade se in codice fai if not table: su un Table. Nel nostro main.py è già corretto: if table is None:.
-
-OperationalError (2059): Authentication plugin ... (MariaDB)
-
-Passa a mysql+pymysql://... in DATABASE_URL.
-
-Unknown column
-
-Lo schema DB non combacia con ciò che stai inviando/leggendo. Controlla i nomi colonna, NOT NULL senza default, ecc.
-
-Composite PK
-
-L’ordine dei parametri nel path è quello definito dalla PK a DB.
-Esempio store_favorites(listing_id, user_id) → /store_favorites/{listing_id}/{user_id}.
-
-Tabella senza PK
-
-Nessuna rotta auto viene creata: aggiungi una PK (anche composta).
-
-API di servizio (rapido promemoria)
-
-GET /health/ping → { "ok": true }
-
-POST /auth/seed_admin → crea admin
-
-POST /auth/token → login (JWT)
-
-GET /me → info utente corrente
-
-GET / → lista tabelle auto-mappate (auto_tables)
-
-GET /docs → Swagger UI
-
-Estensioni possibili
-
-Filtri & ordinamenti generici (?where=..., ?order_by=...) → da aggiungere a auto_router.py.
-
-Audit log automatico su create/update/delete.
-
-Rate-limit e API Keys per integrazioni esterne.
-
-RBAC per tabella (ruoli/permessi granulari) via mappa table_name → deps.
+For frontend integration, see `../agent_builder_frontend/README.md`.
