@@ -2,7 +2,7 @@ Agent Builder — Backend Auto-CRUD
 
 Backend FastAPI con:
 
-SQLAlchemy Automap → CRUD automatico per tutte le tabelle del DB (con PK singole o composite).
+Prisma Client Python → CRUD automatico per tutte le tabelle del DB (PK singole o composite) con introspezione dinamica.
 
 Autenticazione JWT (Argon2 per le password).
 
@@ -12,7 +12,7 @@ CORS verso il frontend.
 
 Documentazione Swagger.
 
-Funziona con MariaDB/MySQL: usa mariadb+mariadbconnector://... o mysql+pymysql://....
+Routing multi-database: configura più URL via `DATABASES` (JSON alias→URL) e scegli l'alias con l'header `X-Database`.
 
 Requisiti
 
@@ -24,13 +24,10 @@ MariaDB / MySQL in esecuzione e raggiungibile
 
 Struttura cartelle (generata)
 app/
-  auto_router.py          # Builder generico di router CRUD (GET/POST/PUT/DELETE)
-  db.py                   # Engine, Session, dependency get_db
+  auto_router.py          # Builder generico CRUD che usa Prisma
+  db.py                   # Gestione client Prisma multi-database
   dependencies.py         # get_current_user, require_admin (JWT)
-  main.py                 # FastAPI app + registrazione router auto
-  models/
-    base.py               # BaseApp dichiarativo (per tabella users)
-    user.py               # Modello users (auth)
+  main.py                 # FastAPI app + registrazione router automatici
   routers/
     auth.py               # /auth/token (login), /auth/seed_admin
     health.py             # /health/ping
@@ -38,7 +35,8 @@ app/
     users.py              # CRUD utenti (con hashing)
   security/
     auth.py               # hash/verifica Argon2, create_access_token
-  utils.py                # row_to_dict (serializzazione ORM → dict)
+  utils.py                # serializzazione dict
+prisma/schema.prisma      # Configurazione Prisma
 .env.example
 requirements.txt
 README.md
@@ -51,6 +49,7 @@ Windows (PowerShell)
 python -m venv .venv
 . .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+prisma generate
 Copy-Item .env.example .env
 
 
@@ -59,20 +58,23 @@ macOS/Linux
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+prisma generate
 cp .env.example .env
 
 2) Configura .env
 
-Scegli un driver e aggiorna DATABASE_URL, esempio PyMySQL:
+Scegli un driver e aggiorna DATABASE_URL:
 
-DATABASE_URL=mysql+pymysql://user:pass@localhost:3306/agent_app
+DATABASE_URL=mysql://user:pass@localhost:3306/agent_app
+# Opzionale: routing multi-db
+# DATABASES={"default":"mysql://user:pass@localhost:3306/agent_app","analytics":"mysql://user:pass@localhost:3306/analytics"}
 FRONTEND_ORIGIN=http://localhost:3000
 SECRET_KEY=metti_uno_stringone_lungo_e_casuale
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=120
 
 
-Se vedi errori di plugin MariaDB tipo auth_gssapi_client, passa a PyMySQL (mysql+pymysql://...).
+Per scegliere un database specifico invia `X-Database: <alias>` nelle richieste. Se non specificato si usa l'alias di default (prima entry o `DEFAULT_DATABASE`).
 
 3) Avvio server
 python -m uvicorn app.main:app --reload
@@ -286,10 +288,6 @@ Argon2
 Assicurati argon2-cffi installato (in requirements.txt).
 
 Se avevi hash bcrypt vecchi, il login li verifica e (opzionalmente) li ri-hasha ad Argon2.
-
-TypeError: Boolean value of this clause is not defined (SQLAlchemy)
-
-Accade se in codice fai if not table: su un Table. Nel nostro main.py è già corretto: if table is None:.
 
 OperationalError (2059): Authentication plugin ... (MariaDB)
 
