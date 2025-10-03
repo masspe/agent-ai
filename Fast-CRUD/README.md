@@ -4,16 +4,17 @@ A powerful FastAPI backend with automatic CRUD generation for database tables.
 
 ## ✨ Features
 
-- **SQLAlchemy Automap**: Automatic CRUD operations for all database tables (single or composite primary keys)
+- **Prisma-Powered Auto CRUD**: Dynamic CRUD operations for every table (single or composite primary keys) using Prisma Client Python under the hood
 - **JWT Authentication**: Secure authentication with Argon2 password hashing
 - **Custom User Router**: Specialized user management with password hashing (doesn't expose password_hash)
 - **CORS Support**: Pre-configured for frontend integration
 - **Swagger Documentation**: Interactive API documentation
-- **Multi-Database**: Works with MariaDB/MySQL using `mariadb+mariadbconnector://...` or `mysql+pymysql://...`
+- **Multi-Database Routing**: Configure multiple database URLs via environment variables and switch per request with the `X-Database` header
 
 ## 📋 Requirements
 
 - **Python 3.12+**
+- **Node.js 18+** (required by Prisma for client generation)
 - **MariaDB/MySQL** database server running and accessible
 - **Virtual Environment** (recommended)
 
@@ -21,21 +22,21 @@ A powerful FastAPI backend with automatic CRUD generation for database tables.
 
 ```
 app/
-├── auto_router.py          # Generic CRUD router builder (GET/POST/PUT/DELETE)
-├── db.py                   # Database engine, session, get_db dependency
+├── auto_router.py          # Generic CRUD router builder backed by Prisma
+├── db.py                   # Prisma client manager with multi-db support
 ├── dependencies.py         # get_current_user, require_admin (JWT)
 ├── main.py                 # FastAPI app + auto router registration
-├── models/
-│   ├── base.py            # BaseApp declarative (for users table)
-│   └── user.py            # User model (authentication)
 ├── routers/
 │   ├── auth.py            # /auth/token (login), /auth/seed_admin
 │   ├── health.py          # /health/ping
 │   ├── me.py              # /me (current user profile)
 │   └── users.py           # User CRUD (with password hashing)
+├── schema_registry.py      # Introspects table metadata via Prisma
 ├── security/
 │   └── auth.py            # Argon2 hash/verify, create_access_token
-└── utils.py               # row_to_dict (ORM → dict serialization)
+└── utils.py               # Helpers for serialising DB rows
+prisma/
+└── schema.prisma          # Prisma datasource configuration
 ```
 
 ## 🚀 Quick Setup
@@ -47,6 +48,7 @@ app/
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+prisma generate
 Copy-Item .env.example .env
 ```
 
@@ -55,6 +57,7 @@ Copy-Item .env.example .env
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+prisma generate
 cp .env.example .env
 ```
 
@@ -63,7 +66,9 @@ cp .env.example .env
 Edit `.env` file with your database settings:
 
 ```env
-DATABASE_URL=mysql+pymysql://user:pass@localhost:3306/agent_app
+DATABASE_URL=mysql://user:pass@localhost:3306/agent_app
+# Optional: JSON map of alias -> URL for multi-db routing
+# DATABASES={"default":"mysql://user:pass@localhost:3306/agent_app","analytics":"mysql://user:pass@localhost:3306/analytics"}
 FRONTEND_ORIGIN=http://localhost:3000
 SECRET_KEY=your-long-random-secret-key-here
 JWT_ALGORITHM=HS256
@@ -71,6 +76,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES=120
 ```
 
 > **Note**: If you encounter MariaDB plugin errors like `auth_gssapi_client`, switch to PyMySQL (`mysql+pymysql://...`).
+
+### 2.1 Multi-Database Routing
+
+When more than one URL is provided via the `DATABASES` environment variable (JSON map of `alias -> url`), Fast CRUD keeps a Prisma client open for each alias. Pick the database for a specific request by sending the `X-Database: <alias>` header. If the header is missing the default alias (from `DEFAULT_DATABASE` or the first entry) is used.
 
 ### 3. Start the Server
 

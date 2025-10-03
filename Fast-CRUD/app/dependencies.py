@@ -1,11 +1,13 @@
 from __future__ import annotations
 import os
-from fastapi import Depends, HTTPException, status, Request, Header
+from typing import Any, Dict
+
+from fastapi import Depends, HTTPException, Request, Header, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
-from sqlalchemy.orm import Session
+from prisma import Prisma
+
 from .db import get_db
-from .models.user import User
 
 SECRET_KEY: str = os.getenv("SECRET_KEY", "dev_secret_change_me")
 ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
@@ -22,7 +24,16 @@ def _extract_bearer_token(request: Request, authorization: str | None = Header(d
         return cookie_token
     return None
 
-def get_current_user(request: Request, token: str | None = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+async def _fetch_user_by_email(db: Prisma, email: str) -> Dict[str, Any] | None:
+    rows = await db.query_raw("SELECT * FROM `users` WHERE email = ? LIMIT 1", email)
+    return rows[0] if rows else None
+
+
+async def get_current_user(
+    request: Request,
+    token: str | None = Depends(oauth2_scheme),
+    db: Prisma = Depends(get_db),
+) -> Dict[str, Any]:
     cred_exc = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials",
                              headers={"WWW-Authenticate": "Bearer"})
     token = token or _extract_bearer_token(request)
@@ -35,12 +46,12 @@ def get_current_user(request: Request, token: str | None = Depends(oauth2_scheme
             raise cred_exc
     except JWTError:
         raise cred_exc
-    user = db.query(User).filter(User.email == email).first()
-    if not user or not getattr(user, "is_active", True):
+    user = await _fetch_user_by_email(db, email)
+    if not user or not user.get("is_active", True):
         raise cred_exc
     return user
 
-def require_admin(user: User = Depends(get_current_user)) -> User:
-    if getattr(user, "role", "user") != "admin":
+async def require_admin(user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    if user.get("role", "user") != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
     return user
