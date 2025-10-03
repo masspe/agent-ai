@@ -1,6 +1,6 @@
 echo DB URLs
-set DATABASE_URL=mysql+pymysql://app_user:123456@localhost/agent_app?charset=utf8mb4
-set STORAGE_DB_URL=mysql+pymysql://app_user:123456@localhost/agent_storage?charset=utf8mb4
+set DATABASE_URL=mysql://app_user:123456@localhost:3306/agent_app
+set DATABASES={"default":"%DATABASE_URL%","analytics":"mysql://app_user:123456@localhost:3306/agent_analytics"}
 
 echo Auth
 set JWT_SECRET=change_me_to_a_long_random_secret
